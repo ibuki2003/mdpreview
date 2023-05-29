@@ -1,4 +1,4 @@
-import { CSS, KATEX_CSS, render } from "./render.ts";
+import { KATEX_CSS, render } from "./render.ts";
 import { contentType } from "https://deno.land/x/media_types@v2.11.0/mod.ts";
 import { dirname, extname } from "https://deno.land/std@0.115.1/path/mod.ts";
 import { readableStreamFromReader } from "https://deno.land/std@0.177.1/streams/mod.ts";
@@ -11,14 +11,26 @@ const HTML_TEMPLATE = `
 <head>
   <meta charset="UTF-8">
   <title>md6</title>
-  <!--<style>${CSS}</style>-->
   <style>${KATEX_CSS}</style>
   <style>
+  html {
+    margin: 0;
+    padding: 0;
+    width: 100% !important
+  }
+  body {
+    margin: 1em;
+    padding: 0;
+  }
   .katex-display {
     margin: 0em !important;
   }
   .katex-display>.katex {
     text-align: left;
+  }
+  img {
+    max-width: 100%;
+    height: auto;
   }
   </style>
 </head>
