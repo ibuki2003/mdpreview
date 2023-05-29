@@ -1,6 +1,6 @@
 import { KATEX_CSS, render } from "./render.ts";
 import { contentType } from "https://deno.land/x/media_types@v2.11.0/mod.ts";
-import { dirname, extname } from "https://deno.land/std@0.115.1/path/mod.ts";
+import { extname, join } from "https://deno.land/std@0.115.1/path/mod.ts";
 import { readableStreamFromReader } from "https://deno.land/std@0.177.1/streams/mod.ts";
 
 const PORT = 8080;
@@ -41,9 +41,9 @@ const e = document.getElementById('app');
 async function main() {
   while (true) {
     try {
-      const res = await (fetch('/api').then(res => res.json()));
+      const res = await (fetch(\`/api?path=\${location.pathname}\`).then(res => res.json()));
       e.innerHTML = res.data;
-      await fetch('/watch');
+      await fetch(\`/watch?path=\${location.pathname}\`);
     } catch (e) {
       console.error(e);
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -81,7 +81,7 @@ function timeoutPromise(p: Promise<void>, ms: number) {
   });
 }
 
-async function main(filename: string) {
+async function main(basepath: string) {
   const server = Deno.listen({ port: PORT });
   console.log(
     `HTTP webserver running. Access it at: http://localhost:${PORT}/`
@@ -95,10 +95,16 @@ async function main(filename: string) {
     const httpConn = Deno.serveHttp(conn);
     for await (const requestEvent of httpConn) {
       const url = new URL(requestEvent.request.url);
-      console.log(requestEvent.request.url);
+      console.log(url.href);
+      const path = url.searchParams.get("path");
+      const filename = path ? join(basepath, path) : null;
+
       if (url.pathname === "/api") {
+        if (!filename) {
+          requestEvent.respondWith( new Response(null, { status: 400, }));
+          continue;
+        }
         const body = JSON.stringify({
-          // data: md6.toHtml(Deno.readTextFileSync(filename)),
           data: render(Deno.readTextFileSync(filename), {
             allowMath: true,
             marked_options: {
@@ -116,7 +122,12 @@ async function main(filename: string) {
           })
         );
         continue;
-      } else if (url.pathname === "/watch") {
+      } else if (url.pathname == "/watch") {
+        if (!filename) {
+          requestEvent.respondWith( new Response(null, { status: 400, }));
+          continue;
+        }
+
         await timeoutPromise(waitWatch(filename), 60000);
         try {
           await requestEvent.respondWith(new Response(null, { status: 204 }));
@@ -125,36 +136,39 @@ async function main(filename: string) {
         }
         continue;
       } else if (url.pathname === "/") {
-        requestEvent.respondWith(
-          new Response(HTML_TEMPLATE, {
-            status: 200,
-            headers: {
-              "content-type": "text/html",
-            },
-          })
-        );
+        requestEvent.respondWith( new Response(null, { status: 204, }));
       } else {
-        const basepath = dirname(filename);
         const filepath = `${basepath}${url.pathname}`;
-        const mime = contentType(extname(filepath)) || "text/plain";
-        console.log(filepath);
-        try {
-          const fileStream = await Deno.open(filepath);
-          await requestEvent.respondWith(
-            new Response(readableStreamFromReader(fileStream), {
+        if (filepath.endsWith(".md")) {
+          requestEvent.respondWith(
+            new Response(HTML_TEMPLATE, {
               status: 200,
               headers: {
-                "content-type": mime,
+                "content-type": "text/html",
               },
             })
           );
-        } catch (e) {
-          console.error(e);
-          requestEvent.respondWith(
-            new Response(null, {
-              status: 404,
-            })
-          );
+        } else {
+          const mime = contentType(extname(filepath)) || "text/plain";
+          console.log(filepath);
+          try {
+            const fileStream = await Deno.open(filepath);
+            await requestEvent.respondWith(
+              new Response(readableStreamFromReader(fileStream), {
+                status: 200,
+                headers: {
+                  "content-type": mime,
+                },
+              })
+            );
+          } catch (e) {
+            console.error(e);
+            requestEvent.respondWith(
+              new Response(null, {
+                status: 404,
+              })
+            );
+          }
         }
       }
     }
